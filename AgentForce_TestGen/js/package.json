@@ -1,0 +1,9 @@
+{
+  "name": "js-parser",
+  "version": "1.0.0",
+  "description": "A simple JS parser for TestGen",
+  "main": "parser.js",
+  "dependencies": {
+    "acorn": "^8.11.3"
+  }
+}
