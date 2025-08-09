@@ -28,30 +28,24 @@ async def generate_tests(file: UploadFile = File(...)):
         
         # Parse the code
         functions = parser.parse_file(content_str)
+        if not functions:
+            raise HTTPException(400, "No testable functions found in file")
         
-        # Generate tests using LLM
-        test_data = llm.generate_tests(content_str, functions)
+        # Generate tests using LLM (returns JSON string)
+        test_json = llm.generate_tests(content_str, functions)
         
-        # Convert string response to JSON
-        try:
-            test_json = json.loads(test_data)
-        except json.JSONDecodeError:
-            raise HTTPException(500, "Invalid JSON response from LLM")
-        
-        # Generate test file
+        # Generate test file from JSON string
         module_name = Path(file.filename).stem
         test_file = test_gen.generate_test_file(module_name, test_json)
         
         return {
             "message": "Tests generated successfully",
             "test_file": test_file,
-            "functions_analyzed": len(functions),
-            "tests_generated": sum(len(f["tests"]) for f in test_json["functions"])
+            "functions_analyzed": len(functions)
         }
+        
     except Exception as e:
         raise HTTPException(500, f"Error processing file: {str(e)}")
-    
-
 
 
 

@@ -1,62 +1,28 @@
 import pytest
-import sample_input
+from examples import sample_input
 
-def test_empty_cart():
-    """unit: 
-"""
-    result = sample_input.calculate_discount([])
+
+@pytest.mark.parametrize('input_value,expected', [
+    ([], 0.0)  # empty list returns zero,
+    ([(50, 1)], 0.0)  # below threshold,
+    ([(60, 2)], pytest.approx(12.0))  # above threshold
+])
+def test_basic_scenarios(input_value, expected):
+    '''Test various input scenarios'''
+    result = sample_input.calculate_discount(input_value)
+    assert result == expected
+
+
+def test_exact_threshold():
+    '''total exactly 100 should give no discount'''
+    result = sample_input.calculate_discount([(50, 2)])
     assert result == 0.0
 
-def test_no_discount():
-    """unit: 
-"""
-    result = sample_input.calculate_discount([(10, 2), (5, 3)])
-    assert result == 0.0
 
-def test_discount_applied():
-    """unit: 
-"""
-    result = sample_input.calculate_discount([(20, 3), (10, 5)])
-    assert result == 11.0
+@pytest.mark.slow
+def test_performance():
+    '''Test with large cart'''
+    large_input = [(1.0, 1)] * 100000
+    result = sample_input.calculate_discount(large_input)
+    assert result == pytest.approx(100000 * 0.1)
 
-def test_single_item_no_discount():
-    """unit: 
-"""
-    result = sample_input.calculate_discount([(50, 1)])
-    assert result == 0.0
-
-def test_single_item_with_discount():
-    """unit: 
-"""
-    result = sample_input.calculate_discount([(110, 1)])
-    assert result == 11.0
-
-def test_large_quantity_no_discount():
-    """unit: 
-"""
-    result = sample_input.calculate_discount([(1, 99)])
-    assert result == 0.0
-
-def test_large_quantity_with_discount():
-    """unit: 
-"""
-    result = sample_input.calculate_discount([(1, 101)])
-    assert result == 10.1
-
-def test_zero_price_item():
-    """unit: 
-"""
-    result = sample_input.calculate_discount([(0, 1000)])
-    assert result == 0.0
-
-def test_zero_quantity_item():
-    """unit: 
-"""
-    result = sample_input.calculate_discount([(1000, 0)])
-    assert result == 0.0
-
-def test_mixed_prices_and_quantities():
-    """unit: 
-"""
-    result = sample_input.calculate_discount([(10, 5), (20, 2), (5, 10)])
-    assert result == 14.0
