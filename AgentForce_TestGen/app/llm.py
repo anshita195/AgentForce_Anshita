@@ -4,103 +4,142 @@ from typing import Dict, List, Any
 from dotenv import load_dotenv
 from pathlib import Path
 import json
-from .parser import FunctionInfo # Keep for Python
+import re
+from jsonschema import validate, ValidationError
+from .parser import FunctionInfo
+
+# --- CORRECTED SCHEMA DEFINITIONS ---
+PY_TEST_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "test_groups": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "cases": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "input": {"type": "string"},
+                                "expected_output": {"type": ["string", "number", "boolean"]}
+                            },
+                            "required": ["input", "expected_output"]
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "required": ["test_groups"]
+}
+
+JS_TEST_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "imports": {"type": "string"},
+        "tests": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "describe": {"type": "string"},
+                    "cases": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "it": {"type": "string"},
+                                "function_to_test": {"type": "string"},
+                                "input": {"type": "string"},
+                                "expected_output": {"type": ["string", "number", "boolean"]}
+                            },
+                            "required": ["it", "function_to_test", "input", "expected_output"]
+                        }
+                    }
+                },
+                "required": ["describe", "cases"]
+            }
+        }
+    },
+    "required": ["imports", "tests"]
+}
+
 
 class LLMWrapper:
-    def __init__(self):
+    # ... The rest of the file is the same as the previous correct version ...
+    def __init__(self, max_retries=3):
         env_path = Path(__file__).parent.parent / '.env'
         load_dotenv(env_path)
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         genai.configure(api_key=api_key)
-        try:
-            self.model = genai.GenerativeModel('gemini-2.0-flash')
-            print("Successfully initialized Gemini model")
-        except Exception as e:
-            print(f"Error initializing Gemini: {str(e)}")
-            raise
+        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        self.max_retries = max_retries
 
-    def _generate_content(self, prompt: str) -> str:
-        # (This helper function remains the same as before)
-        try:
-            generation_config = {"temperature": 0.7, "top_k": 1, "max_output_tokens": 2048}
-            response = self.model.generate_content(
-                contents=[{"parts": [{"text": prompt}]}],
-                generation_config=generation_config
-            )
-            result = response.text.strip()
+    def _generate_and_validate(self, prompt: str, schema: Dict) -> str:
+        """Main generation loop with validation and retries."""
+        for attempt in range(self.max_retries):
             try:
-                json.loads(result)
-                return result
-            except json.JSONDecodeError:
-                import re
-                json_match = re.search(r'({[\s\S]*})', result)
-                if json_match:
-                    return json_match.group(1)
-                raise ValueError("Could not extract valid JSON from response")
-        except Exception as e:
-            print(f"Error generating tests: {str(e)}")
-            raise
+                # Lowered temperature for more deterministic output
+                generation_config = {"temperature": 0.4, "top_k": 1, "max_output_tokens": 2048}
+                response = self.model.generate_content(
+                    contents=[{"parts": [{"text": prompt}]}],
+                    generation_config=generation_config
+                )
+                raw_text = response.text.strip()
+                json_match = re.search(r'```json\s*({[\s\S]*?})\s*```|({[\s\S]*})', raw_text)
+                if not json_match:
+                    raise ValueError("No JSON object found in the LLM response.")
+                json_str = next(group for group in json_match.groups() if group is not None)
+                parsed_json = json.loads(json_str)
+                validate(instance=parsed_json, schema=schema)
+                return json.dumps(parsed_json)
+            except (ValueError, json.JSONDecodeError, ValidationError) as e:
+                print(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+                prompt += f"\n\nYour previous response failed validation with the error: {e}. \nPlease correct your response and ensure it strictly adheres to this JSON schema:\n{json.dumps(schema)}"
+        raise RuntimeError(f"Failed to generate valid JSON after {self.max_retries} attempts.")
 
-    # --- PYTHON TEST GENERATION (remains the same) ---
+    # --- PYTHON METHODS ---
     def generate_tests(self, code: str, functions: List[FunctionInfo]) -> str:
         prompt = self._build_py_prompt(code, functions)
-        return self._generate_content(prompt)
+        return self._generate_and_validate(prompt, PY_TEST_SCHEMA)
 
     def _build_py_prompt(self, code: str, functions: List[FunctionInfo]) -> str:
-        # (This function remains the same as before)
         function_info_str = "\n".join(
             f"- {f.name}({', '.join(f.args)}): {f.docstring or 'No docstring'}"
             for f in functions
         )
-        return f"""You are a test generation assistant. Generate pytest unit tests for the following Python code.
-Your response must be valid JSON in exactly this format, with no additional text:
-{{
-  "test_structure": {{ ... }}
-}}
-Here is the code to test:
+        return f"""You are an expert test engineer. Analyze the Python code and generate test cases.
+Your response MUST be a single JSON object.
+
+**CRITICAL INSTRUCTION**: The `expected_output` key must contain ONLY the raw expected value (e.g., `0.0`, `12.0`, `true`, `false`, or a string like `"some text"`). DO NOT include any code, functions, or expressions like `pytest.approx(12.0)`.
+
+Code to analyze:
 {code}
 Function information:
 {function_info_str}
-Remember: Return ONLY valid JSON, no other text or formatting."""
+"""
 
-    # --- REVISED JAVASCRIPT TEST GENERATION ---
+    # --- JAVASCRIPT METHODS ---
     def generate_js_tests(self, code: str, functions: List[Dict]) -> str:
         prompt = self._build_js_prompt(code, functions)
-        return self._generate_content(prompt)
+        return self._generate_and_validate(prompt, JS_TEST_SCHEMA)
 
     def _build_js_prompt(self, code: str, functions: List[Dict]) -> str:
         function_info_str = "\n".join(
             f"- {f['name']}({', '.join(f['args'])})"
             for f in functions
         )
-        return f"""You are a test generation assistant. Generate Jest unit tests for the following JavaScript code.
-Your response must be valid JSON in exactly this format, with no additional text:
+        return f"""You are an expert test engineer. Analyze the JavaScript code and generate Jest test cases.
+Your response MUST be a single JSON object.
 
-{{
-  "imports": "const {{ <function1>, <function2> }} = require('../examples/<filename>');",
-  "tests": [
-    {{
-      "describe": "<describe_block_for_a_function>",
-      "cases": [
-        {{
-          "it": "<it_block_description>",
-          "function_to_test": "<name_of_function_being_tested>",
-          "input": "<test_input>",
-          "expected": "<full_jest_matcher_string, e.g., toBe(5) or toEqual([1,2])>"
-        }}
-      ]
-    }}
-  ]
-}}
+**CRITICAL INSTRUCTION**: The `expected_output` key must contain ONLY the raw expected value (e.g., `1`, `-1`, or a string like `"Hello, World!"`). DO NOT include any code, functions, or expressions like `.toBe(1)`.
 
-Here is the code to test:
+Code to analyze:
 {code}
-
 Function information:
 {function_info_str}
-
-IMPORTANT: For each test case in the 'cases' array, you MUST include the 'function_to_test' key with the name of the function that should be called.
-
-Remember: Return ONLY valid JSON, no other text or formatting."""
+"""

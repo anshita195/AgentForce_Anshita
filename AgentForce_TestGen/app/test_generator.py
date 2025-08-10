@@ -1,64 +1,55 @@
 import json
-from typing import Dict, List
+from typing import Dict, List, Any
 from pathlib import Path
-
-# Note: We are removing the dependency on FunctionInfo as it's no longer needed here
-# from .parser import FunctionInfo 
+import re
 
 class TestGenerator:
     def __init__(self, output_dir: str = "tests"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
 
+    def _format_py_value(self, value: Any) -> str:
+        """Formats a Python value for inclusion in the test code."""
+        if isinstance(value, str):
+            # Escape single quotes within the string
+            return f"'{value.replace("'", "\\'")}'"
+        return str(value)
+
     def generate_test_file(self, module_name: str, test_data: Dict) -> str:
-        """
-        Generate a pytest file from the new 'test_structure' in the LLM response.
-        """
-        if "test_structure" not in test_data:
-            raise ValueError("JSON from LLM is missing 'test_structure' key")
+        """Generate a pytest file from the LLM response."""
+        test_content = [
+            "import pytest",
+            f"from examples import {module_name}",
+            ""
+        ]
 
-        structure = test_data["test_structure"]
-        test_content = []
+        test_counter = 1
+        for group in test_data.get("test_groups", []):
+            for case in group.get("cases", []):
+                if "input" not in case or "expected_output" not in case:
+                    continue
 
-        # Add imports
-        if "imports" in structure:
-            test_content.extend(structure["imports"])
-            test_content.append("") # Add a blank line
+                input_val = case["input"]
+                expected_out = case["expected_output"]
 
-        # Process different test groups
-        for group in structure.get("test_groups", []):
-            if "parametrize" in group:
-                self._add_parametrized_test(group, test_content)
-            elif "cases" in group:
-                self._add_simple_cases(group, module_name, test_content)
-        
-        test_file_path = self.output_dir / f"test_{module_name}.py"
-        test_file_path.write_text("\n".join(test_content))
-        return str(test_file_path)
+                # --- FIX: Use a simple and safe counter for test names ---
+                test_name = f"test_{module_name}_{test_counter}"
+                test_counter += 1
 
-    def _add_parametrized_test(self, group: Dict, test_content: List[str]):
-        """Handles parametrized test cases."""
-        params = group["parametrize"]["params"]
-        test_content.append(f"@pytest.mark.parametrize('{params}', [")
-        
-        for case in group["parametrize"]["cases"]:
-            comment = f"  # {case['comment']}" if 'comment' in case else ""
-            test_content.append(f"    ({case['input']}, {case['expected']}),{comment}")
+                test_content.extend([
+                    f"def {test_name}():",
+                    f"    # Test with input: {input_val}",
+                    f"    result = {module_name}.calculate_discount({input_val})"
+                ])
 
-        test_content.append("])")
-        test_content.append(f"def {group['name']}({params}):")
-        # A more generic way to handle the test body for parametrized tests
-        test_content.append(f"    assert sample_input.calculate_discount(input_value) == expected")
-        test_content.append("")
+                if isinstance(expected_out, float):
+                    test_content.append(f"    assert result == pytest.approx({expected_out})")
+                else:
+                    formatted_expected = self._format_py_value(expected_out)
+                    test_content.append(f"    assert result == {formatted_expected}")
 
-    def _add_simple_cases(self, group: Dict, module_name: str, test_content: List[str]):
-        """Handles simple, non-parametrized test cases."""
-        for case in group["cases"]:
-            description = case.get("description", "")
-            test_content.extend([
-                f"def {case['name']}():",
-                f'    """{description}"""',
-                f"    result = {module_name}.calculate_discount({case['input']})",
-                f"    assert result == {case['expected']}",
-                ""
-            ])
+                test_content.append("")
+
+        test_file = self.output_dir / f"test_{module_name}.py"
+        test_file.write_text("\n".join(test_content))
+        return str(test_file)

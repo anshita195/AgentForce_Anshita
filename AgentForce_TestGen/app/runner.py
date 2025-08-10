@@ -5,53 +5,49 @@ import sys
 
 def run_tests_and_get_coverage(test_file_path: str, module_name: str) -> dict:
     """
-    Runs pytest with coverage and returns a cleaned-up report.
+    Runs pytest and returns a cleaned-up report.
+    (Temporarily disabled coverage to fix a subprocess bug).
     """
     try:
-        source_dir = Path(f"examples/{module_name}.py").parent
+        # --- MODIFIED: The command now runs pytest without coverage ---
         command = [
             sys.executable,
             "-m", "pytest",
-            test_file_path,
-            "--cov", str(source_dir),
-            "--cov-report", "term-missing",
-            "--cov-report", "html"
+            test_file_path
         ]
         
         result = subprocess.run(
             command,
             capture_output=True,
             text=True,
-            check=True
+            check=True,
+            encoding='utf-8'
         )
         
         output = result.stdout
         
-        # --- NEW: Extract more details using regex ---
-        coverage_match = re.search(r"TOTAL.*\s(\d+)%", output)
-        passed_match = re.search(r"(\d+) passed", output)
+        passed_match = re.search(r"(\d+)\s+passed", output)
+        summary = f"{passed_match.group(1) if passed_match else '0'} tests passed."
 
         return {
             "status": "Success",
-            "summary": f"{passed_match.group(1) if passed_match else '0'} tests passed.",
-            "coverage_percentage": int(coverage_match.group(1)) if coverage_match else 0,
-            "html_report_path": "htmlcov/index.html",
-            "full_log": output # Keep the raw log in a separate field
+            "summary": summary,
+            "coverage_percentage": "Coverage reporting is temporarily disabled to resolve a bug.",
+            "full_log": output
         }
 
     except subprocess.CalledProcessError as e:
-        failed_match = re.search(r"(\d+) failed", e.stdout + e.stderr)
-        summary = f"{failed_match.group(1) if failed_match else '0'} tests failed."
+        stdout = e.stdout or ""
+        stderr = e.stderr or ""
         return {
             "status": "Tests Failed",
-            "summary": summary,
-            "error": "Pytest execution failed.",
-            "full_log": e.stdout + e.stderr
+            "summary": "Pytest execution failed.",
+            "error": "Pytest process returned a non-zero exit code.",
+            "full_log": stdout + stderr
         }
     except Exception as e:
         return {
             "status": "Error",
-            "summary": "An unexpected error occurred.",
-            "error": "An unexpected error occurred during test execution.",
-            "full_log": str(e)
+            "summary": "An unexpected error occurred during test execution.",
+            "error": str(e)
         }
