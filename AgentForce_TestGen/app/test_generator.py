@@ -1,7 +1,8 @@
 import json
-from typing import Dict, List, Any
+from typing import Dict, Any
 from pathlib import Path
-import re
+import tempfile
+import ast
 
 class TestGenerator:
     def __init__(self, output_dir: str = "tests"):
@@ -9,14 +10,11 @@ class TestGenerator:
         self.output_dir.mkdir(exist_ok=True)
 
     def _format_py_value(self, value: Any) -> str:
-        """Formats a Python value for inclusion in the test code."""
         if isinstance(value, str):
-            # Escape single quotes within the string
             return f"'{value.replace("'", "\\'")}'"
         return str(value)
 
     def generate_test_file(self, module_name: str, test_data: Dict) -> str:
-        """Generate a pytest file from the LLM response."""
         test_content = [
             "import pytest",
             f"from examples import {module_name}",
@@ -24,22 +22,31 @@ class TestGenerator:
         ]
 
         test_counter = 1
+        # --- FINAL FIX: Use the function_name from the test group ---
         for group in test_data.get("test_groups", []):
+            func_name = group.get("function_name")
+            if not func_name:
+                continue # Skip groups without a function name
+
             for case in group.get("cases", []):
                 if "input" not in case or "expected_output" not in case:
                     continue
 
-                input_val = case["input"]
+                try:
+                    input_val = ast.literal_eval(case["input"])
+                except (ValueError, SyntaxError):
+                    continue
+                
                 expected_out = case["expected_output"]
-
-                # --- FIX: Use a simple and safe counter for test names ---
+                
                 test_name = f"test_{module_name}_{test_counter}"
                 test_counter += 1
 
+                # Use the dynamic function name here
                 test_content.extend([
                     f"def {test_name}():",
-                    f"    # Test with input: {input_val}",
-                    f"    result = {module_name}.calculate_discount({input_val})"
+                    f"    # Test for {func_name} with input: {input_val}",
+                    f"    result = {module_name}.{func_name}({input_val})",
                 ])
 
                 if isinstance(expected_out, float):
@@ -50,6 +57,13 @@ class TestGenerator:
 
                 test_content.append("")
 
-        test_file = self.output_dir / f"test_{module_name}.py"
-        test_file.write_text("\n".join(test_content))
-        return str(test_file)
+        temp_file = tempfile.NamedTemporaryFile(
+            mode='w+',
+            suffix='.py',
+            delete=False,
+            dir=self.output_dir,
+            encoding='utf-8'
+        )
+        temp_file.write("\n".join(test_content))
+        temp_file.close()
+        return temp_file.name

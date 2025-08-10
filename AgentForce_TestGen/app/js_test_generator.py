@@ -1,14 +1,14 @@
 from pathlib import Path
 from typing import Dict, List, Any
 import re
+import tempfile
 
 class JSTestGenerator:
-    def __init__(self, output_dir: str = "js_tests"):
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(exist_ok=True)
+    def __init__(self):
+        # We will now use a temporary directory
+        pass
 
     def _format_js_value(self, value: Any) -> str:
-        """Formats a Python value into a valid JavaScript literal."""
         if isinstance(value, str):
             escaped_value = value.replace('\\', '\\\\').replace('`', '\\`').replace('${', '\\${')
             return f"`{escaped_value}`"
@@ -19,17 +19,13 @@ class JSTestGenerator:
         return str(value)
 
     def generate_test_file(self, module_name: str, test_data: Dict) -> str:
-        """Generate a Jest test file from the LLM's JSON response."""
+        # (The rest of the function remains the same...)
         test_content = []
 
-        # --- FIX: Build the import path ourselves and ignore the AI's path ---
         try:
-            # Extract only the function names from the AI's import suggestion
             function_names_str = re.search(r'\{\s*(.*?)\s*\}', test_data["imports"]).group(1)
-            # Build the correct, reliable path
             imports_line = f"const {{ {function_names_str} }} = require('../examples/{module_name}');"
         except (AttributeError, IndexError):
-            # Fallback if regex fails for any reason
             imports_line = f"// Failed to automatically generate imports. Please check manually."
 
         test_content.append(imports_line)
@@ -49,7 +45,7 @@ class JSTestGenerator:
                 expected_out = case["expected_output"]
 
                 formatted_expected = self._format_js_value(expected_out)
-                
+
                 if isinstance(expected_out, (dict, list)):
                     assertion = f"expect({func_name}({input_val})).toEqual({formatted_expected});"
                 else:
@@ -64,6 +60,7 @@ class JSTestGenerator:
             test_content.append("});")
             test_content.append("")
 
-        test_file_path = self.output_dir / f"{module_name}.test.js"
-        test_file_path.write_text("\n".join(test_content), encoding='utf-8') # Specify encoding
-        return str(test_file_path)
+        # --- FIX: Ensure the temporary file has the .test.js suffix ---
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.test.js', delete=False, dir="js_tests", encoding='utf-8') as temp_file:
+            temp_file.write("\n".join(test_content))
+            return temp_file.name

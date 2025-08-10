@@ -14,43 +14,47 @@ def run_js_tests_and_get_coverage(test_file_path: str, module_name: str) -> Dict
         if not jest_cli_path.exists():
             raise FileNotFoundError("jest.js not found. Please run 'npm install jest'.")
 
-        source_file = project_root / "examples" / f"{module_name}.js"
-        results_path = project_root / 'jest_results.json'
+        # --- FIX: Use a relative path for the coverage collection ---
+        # This is more robust for Jest across different platforms.
+        source_file_relative = f"examples/{module_name}.js"
         
+        results_path = project_root / 'jest_results.json'
+        coverage_summary_path = project_root / "coverage" / "coverage-summary.json"
+
         command = [
             "node",
             str(jest_cli_path),
             test_file_path,
             "--coverage",
-            f"--collectCoverageFrom={source_file}",
+            # Use the relative path here
+            f"--collectCoverageFrom={source_file_relative}",
+            "--coverageReporters=json-summary",
             "--json",
             f"--outputFile={results_path}"
         ]
 
-        # Execute the command from the project root
         subprocess.run(
             command,
             cwd=project_root,
             capture_output=True,
             text=True,
             check=True,
-            encoding='utf-8' # <-- THE CRUCIAL FIX
+            encoding='utf-8'
         )
 
-        # Read the JSON output file created by Jest
         with open(results_path, 'r', encoding='utf-8') as f:
             results = json.load(f)
 
-        # Clean up the results file
+        coverage_pct = 0.0
+        if coverage_summary_path.exists():
+            with open(coverage_summary_path, 'r', encoding='utf-8') as f:
+                coverage_data = json.load(f)
+                coverage_pct = coverage_data.get("total", {}).get("lines", {}).get("pct", 0.0)
+
         if results_path.exists():
             results_path.unlink()
 
         summary = f"{results.get('numPassedTests', 0)} tests passed out of {results.get('numTotalTests', 0)}."
-        coverage_pct = 0
-        # Correctly resolve path for Windows/Linux
-        source_file_key = str(source_file.resolve())
-        if source_file_key in results.get("coverageMap", {}):
-             coverage_pct = results["coverageMap"][source_file_key].get("statements", {}).get("pct", 0)
 
         return {
             "status": "Success" if results.get('numFailedTests', 0) == 0 else "Tests Failed",
@@ -60,9 +64,8 @@ def run_js_tests_and_get_coverage(test_file_path: str, module_name: str) -> Dict
         }
 
     except subprocess.CalledProcessError as e:
-        # Robustly handle stdout/stderr which might be None
-        stdout = e.stdout or ""
-        stderr = e.stderr or ""
+        stdout = (e.stdout or b"").decode('utf-8', errors='ignore')
+        stderr = (e.stderr or b"").decode('utf-8', errors='ignore')
         return {
             "status": "Error",
             "summary": "Jest execution failed.",

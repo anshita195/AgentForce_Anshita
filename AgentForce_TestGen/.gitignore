@@ -26,7 +26,6 @@ dist/
 build/
 *.egg-info/
 
-# --- NEW: JavaScript / Node ---
 # Ignore node_modules directory
 node_modules/
 
@@ -37,3 +36,11 @@ clover.xml
 coverage-final.json
 lcov.info
 jest_results.json
+
+
+# Ignore temporary test files
+tests/tmp*.py
+js_tests/tmp*.js
+
+# Ignore Python coverage XML report
+coverage.xml

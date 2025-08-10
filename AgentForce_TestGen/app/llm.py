@@ -8,7 +8,7 @@ import re
 from jsonschema import validate, ValidationError
 from .parser import FunctionInfo
 
-# --- CORRECTED SCHEMA DEFINITIONS ---
+# --- MODIFIED PYTHON SCHEMA ---
 PY_TEST_SCHEMA = {
     "type": "object",
     "properties": {
@@ -17,6 +17,8 @@ PY_TEST_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
+                    # --- ADDED: Explicitly require the function name ---
+                    "function_name": {"type": "string"},
                     "cases": {
                         "type": "array",
                         "items": {
@@ -28,7 +30,9 @@ PY_TEST_SCHEMA = {
                             "required": ["input", "expected_output"]
                         }
                     }
-                }
+                },
+                # --- ADDED: Make function_name a required property ---
+                "required": ["function_name", "cases"]
             }
         }
     },
@@ -68,7 +72,6 @@ JS_TEST_SCHEMA = {
 
 
 class LLMWrapper:
-    # ... The rest of the file is the same as the previous correct version ...
     def __init__(self, max_retries=3):
         env_path = Path(__file__).parent.parent / '.env'
         load_dotenv(env_path)
@@ -83,7 +86,6 @@ class LLMWrapper:
         """Main generation loop with validation and retries."""
         for attempt in range(self.max_retries):
             try:
-                # Lowered temperature for more deterministic output
                 generation_config = {"temperature": 0.4, "top_k": 1, "max_output_tokens": 2048}
                 response = self.model.generate_content(
                     contents=[{"parts": [{"text": prompt}]}],
@@ -112,13 +114,17 @@ class LLMWrapper:
             f"- {f.name}({', '.join(f.args)}): {f.docstring or 'No docstring'}"
             for f in functions
         )
+        # --- MODIFIED: Update prompt to ask for the function_name key ---
         return f"""You are an expert test engineer. Analyze the Python code and generate test cases.
 Your response MUST be a single JSON object.
 
-**CRITICAL INSTRUCTION**: The `expected_output` key must contain ONLY the raw expected value (e.g., `0.0`, `12.0`, `true`, `false`, or a string like `"some text"`). DO NOT include any code, functions, or expressions like `pytest.approx(12.0)`.
+For each function, create a "test_group" that includes the "function_name" and a list of "cases".
+
+**CRITICAL INSTRUCTION**: The `expected_output` key must contain ONLY the raw expected value (e.g., `0.0`, `12.0`, `true`, `false`, or a string like `"some text"`).
 
 Code to analyze:
 {code}
+
 Function information:
 {function_info_str}
 """
