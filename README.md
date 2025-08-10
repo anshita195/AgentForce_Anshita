@@ -1,84 +1,124 @@
-TestGen AI Agent
-TestGen is an intelligent developer agent designed to automate the creation of unit tests. It analyzes Python and JavaScript code, understands its logic and flow, and generates meaningful test cases, complete with execution results and code coverage reports.
+# TestGen AI Agent
 
-This project was developed to address the "Track 2: Developer Agents - Problem 1: Test Case Generator Bot" challenge.
+**TestGen** is an intelligent developer agent that automates unit-test creation. It analyzes **Python** and **JavaScript** code, reasons about logic and edge cases, generates tests, executes them, and returns execution results plus code-coverage reports.
 
-✨ Features
-Multi-Language Support: Seamlessly generates tests for both Python and JavaScript code.
+> Built for **Track 2: Developer Agents — Problem 1: Test Case Generator Bot**.
 
-Intelligent Test Case Generation: Goes beyond simple boilerplate by creating tests that cover different logical paths and edge conditions (e.g., empty inputs, zero values, negative numbers).
+---
 
-Automated Test Execution: The agent doesn't just write tests; it runs them using the appropriate frameworks (pytest for Python, Jest for JavaScript).
+## Table of Contents
 
-Comprehensive Coverage Reports: Delivers a precise, quantifiable code coverage percentage with every run, providing immediate insight into test quality.
+* [Features](#features)
+* [Architecture](#architecture)
+* [Quick Start](#quick-start)
+* [Usage](#usage)
+* [CLI flags used by runners (recommended)](#cli-flags-used-by-runners-recommended)
+* [Project structure](#project-structure)
+* [`.gitignore` suggestions](#gitignore-suggestions)
+* [Limitations & Security (Important)](#limitations--security-important)
+* [Troubleshooting & Tips](#troubleshooting--tips)
+* [Contributing](#contributing)
+* [License](#license)
 
-Robust API: Built with FastAPI, providing a clean, simple, and effective endpoint for code submission.
+---
 
-Resilient AI Interaction: Implements a retry mechanism and schema validation (jsonschema) to ensure the AI's output is always structured and reliable.
+## Features
 
-🤖 Agent Architecture: How It Works
-TestGen operates on a sophisticated four-step pipeline to interpret code and produce high-quality tests.
+* **Multi-language** support: Generates tests for **Python** (pytest) and **JavaScript** (Jest).
+* **Intelligent test generation**: Produces tests covering logic paths and edge cases (empty inputs, zero, negative numbers, etc.).
+* **Automated execution**: Runs generated tests and returns pass/fail results.
+* **Machine-readable coverage**: Returns accurate coverage percentage (`coverage.xml` / `coverage.json` for Python, `coverage/coverage-summary.json` for JS).
+* **FastAPI API**: Clean `/generate` endpoint for submitting files.
+* **Resilient LLM interaction**: Schema validation + retry logic to keep AI outputs structured and reliable.
 
-1. Parse & Understand
-When a code file is submitted, the agent first uses an Abstract Syntax Tree (AST) to parse the code. This initial step identifies the core components, such as function names and arguments.
+---
 
-Python: Uses Python's built-in ast module.
+## Architecture (high-level)
 
-JavaScript: Uses the acorn library via a Node.js subprocess.
+TestGen operates as a four-step pipeline:
 
-2. Plan & Reason
-The structured information from the AST is sent to a Generative AI (Google's Gemini model). The AI is given a carefully engineered prompt that instructs it to act as an "expert test engineer." It analyzes the function signatures and code logic to reason about potential inputs, expected outputs, and edge cases. Its plan is returned as a structured JSON object.
+1. **Parse & Understand**
 
-3. Generate
-The validated JSON plan from the AI is passed to a dedicated Test Generator module. This component translates the AI's abstract plan into a concrete, syntactically correct test file using the appropriate testing framework (pytest or Jest).
+   * Python: uses the built-in `ast` module to extract functions, arguments, and docstrings.
+   * JavaScript: uses `acorn` via a Node.js helper script to extract function metadata.
 
-4. Execute & Report
-Finally, the agent's Runner module executes the newly generated test file in a secure subprocess. It captures the results and, most importantly, the code coverage report. This complete analysis is then sent back to the user in the API response.
+2. **Plan & Reason**
 
-🚀 Getting Started
-Prerequisites
-Python 3.10+
+   * Structured metadata is sent to the generative AI (Google Gemini). A prompt instructs the model to return a JSON test plan conforming to a schema.
 
-Node.js 14+ and npm
+3. **Generate**
 
-A Google Gemini API Key
+   * The validated JSON plan is transformed into a concrete test file (pytest for Python, Jest for JavaScript).
 
-1. Clone the Repository
+4. **Execute & Report**
+
+   * The test runner executes the test file in a subprocess and writes machine-readable coverage outputs. The API responds with pass/fail summary and coverage percentage.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+* Python **3.10+**
+* Node.js **14+** and `npm`
+* A Google Gemini API key
+
+### 1. Clone the repo
+
+```bash
 git clone <your-repository-url>
 cd AgentForce_TestGen
+```
 
-2. Set Up Environment Variables
-Create a file named .env in the project root and add your Gemini API key:
+### 2. Environment variables
 
+Create a `.env` file in the project root:
+
+```env
 GEMINI_API_KEY="YOUR_API_KEY_HERE"
+```
 
-3. Install Dependencies
-Python Dependencies:
+### 3. Install dependencies
 
+**Python dependencies**
+
+```bash
 pip install -r requirements.txt
+```
 
-Node.js Dependencies:
+**Node.js dependencies**
 
+```bash
 npm install
+```
 
-4. Run the Server
-Start the FastAPI application using Uvicorn:
+### 4. Run the server
 
+```bash
 uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-The agent is now running and ready to accept requests.
+The API will be available at `http://127.0.0.1:8000`.
 
-🛠️ Usage
-Interact with the agent by sending a POST request to the /generate endpoint.
+---
 
-Generate Python Tests
+## Usage
+
+Send a `POST` request to `/generate` with `language` and the `file` to analyze.
+
+### Generate Python tests
+
+```bash
 curl -X POST \
   -F "language=python" \
   -F "file=@examples/sample_input.py" \
   http://127.0.0.1:8000/generate
+```
 
-Example Successful Response:
+**Example response (Python)**
 
+```json
 {
   "language": "python",
   "message": "Python tests generated and executed successfully",
@@ -90,15 +130,20 @@ Example Successful Response:
     "full_log": "..."
   }
 }
+```
 
-Generate JavaScript Tests
+### Generate JavaScript tests
+
+```bash
 curl -X POST \
   -F "language=javascript" \
   -F "file=@examples/sample_input.js" \
   http://127.0.0.1:8000/generate
+```
 
-Example Successful Response:
+**Example response (JavaScript)**
 
+```json
 {
   "language": "javascript",
   "message": "JavaScript tests generated and executed successfully",
@@ -110,22 +155,76 @@ Example Successful Response:
     "full_log": { ... }
   }
 }
+```
 
-📂 Project Structure
+---
+
+## CLI flags used by runners (recommended)
+
+**Python (pytest + coverage)** — produce XML and JSON coverage:
+
+```bash
+# run tests and collect coverage (single command)
+python -m coverage run -m pytest -q --maxfail=1 --disable-warnings --cov=examples --cov-report=xml:coverage.xml
+# then export json coverage
+python -m coverage json -o coverage.json
+```
+
+* `coverage.xml` contains `line-rate` (multiply by 100 → percent).
+* `coverage.json` contains JSON-format coverage data if you prefer JSON.
+
+**JavaScript (Jest)** — run tests + JSON test results + JSON coverage summary:
+
+```bash
+# run from project root (requires local jest installation)
+node ./node_modules/jest/bin/jest.js --json --outputFile=jest_results.json --coverage --coverageReporters=json-summary --runInBand
+```
+
+* Read `coverage/coverage-summary.json` → `total.lines.pct` (or `statements.pct`) for coverage percent.
+* `jest_results.json` contains structured test results and per-test details.
+* `--runInBand` is recommended in ephemeral or resource-constrained sandboxes for predictability.
+
+---
+
+## Project structure
+
+```
 AgentForce_TestGen/
 ├── app/                  # Core application logic
-│   ├── llm.py            # AI interaction, prompts, and schema validation
-│   ├── parser.py         # Python code parser (AST)
-│   ├── js_parser.py      # JavaScript code parser (AST via Node.js)
+│   ├── llm.py            # AI interaction, prompts, schema validation
+│   ├── parser.py         # Python AST parser
+│   ├── js_parser.py      # JS parser (Node.js wrapper)
 │   ├── test_generator.py # Generates pytest files
 │   ├── js_test_generator.py # Generates Jest files
-│   ├── runner.py         # Executes pytest and handles coverage
-│   ├── js_runner.py      # Executes Jest and handles coverage
+│   ├── runner.py         # Executes pytest + generates coverage.xml/json
+│   ├── js_runner.py      # Executes jest + reads coverage-summary.json
 │   └── main.py           # FastAPI server and endpoints
-├── examples/             # Sample code files to test the agent
-├── js/                   # Node.js helper scripts for parsing
-├── tests/                # Output directory for generated Python tests
-├── js_tests/             # Output directory for generated JS tests
-├── .gitignore            # Specifies files for Git to ignore
-├── requirements.txt      # Python dependencies
-└── package.json          # Node.js dependencies
+├── examples/             # Sample input files (Python/JS)
+├── js/                   # Node.js helper scripts (parser.js)
+├── tests/                # Generated Python tests (ephemeral)
+├── js_tests/             # Generated JS tests (ephemeral)
+├── job_artifacts/        # Suggested output artifacts dir (not tracked)
+├── .gitignore
+├── requirements.txt
+└── package.json
+```
+
+---
+
+## Contributing
+
+Contributions are welcome. Suggested priorities:
+
+1. Add sandboxed execution (Docker / microVM) with resource limits.
+2. Add a job queue (Redis + RQ/Celery) for asynchronous execution.
+3. Add end-to-end CI tests and golden prompt tests to prevent prompt drift.
+4. Improve observability (structured logs, job IDs, tracing, and metrics).
+
+---
+
+## Acknowledgements
+
+* Uses Google Gemini (via `google-generativeai`) — ensure you comply with the model provider’s terms.
+* Uses `pytest`, `pytest-cov`, and `coverage` for Python testing and coverage.
+* Uses `jest` and its coverage reporters for JavaScript.
+
