@@ -17,3 +17,5 @@ function calculateFactorial(n) {
 function greet(name) {
   return `Hello, ${name}!`;
 }
+
+module.exports = { calculateFactorial, greet };

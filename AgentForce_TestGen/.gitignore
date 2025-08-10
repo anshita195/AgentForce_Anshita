@@ -5,7 +5,6 @@ __pycache__/
 *$py.class
 .Python
 .coverage
-htmlcov/
 .pytest_cache/
 *.so
 
@@ -27,4 +26,14 @@ dist/
 build/
 *.egg-info/
 
-node_modules
+# --- NEW: JavaScript / Node ---
+# Ignore node_modules directory
+node_modules/
+
+# Ignore Jest coverage reports
+coverage/
+htmlcov/
+clover.xml
+coverage-final.json
+lcov.info
+jest_results.json
